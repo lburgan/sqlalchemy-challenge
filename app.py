@@ -37,12 +37,13 @@ app = Flask(__name__)
 @app.route("/")
 def home():
     return(
+        f"Welcome to the Hawaii Weather API!<br/>"
         f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/start<br/>"
-        f"/api/v1.0/start/end"
+        f"Dates and Precipitation from the most current year: /api/v1.0/precipitation<br/>"
+        f"Information on Stations: /api/v1.0/stations<br/>"
+        f"Dates and Temps. from Most Active Station for most current year: /api/v1.0/tobs<br/>"
+        f"Temp min/avg/max from a start date to today (format YYYY-MM-DD): /api/v1.0/start<br/>"
+        f"Temp min/avg/max from a start date to an end date, inclusive (format YYYY-MM-DD): /api/v1.0/start/end"
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -55,18 +56,58 @@ def prcp():
 
     data = [measurement.date,measurement.prcp]
     year_results = session.query(*data).filter(measurement.date >= year_ago).all()
-    results = list(np.ravel(year_results))
     session.close()
-    return(jsonify(results))
+
+    all_prcp = []
+    for date, rain in year_results:
+        prcp_dict = {}
+        prcp_dict["Date"] = date
+        prcp_dict["Prcp"] = rain
+        all_prcp.append(prcp_dict)
+    return(jsonify(all_prcp))
 
 @app.route("/api/v1.0/stations")
 def stations():
     session = Session(engine)
-    data = [station.station, station.name]
+
+    data = [station.station, station.name,station.latitude,station.longitude, station.elevation]
     results = session.query(*data).all()
-    station_results = list(np.ravel(results))
     session.close()
-    return(jsonify(station_results))
+
+    all_stats = []
+    for stat,name,lat,lon,elv in results:
+        stats_dict = {}
+        stats_dict["Station"] = stat
+        stats_dict["Name"] = name
+        stats_dict["Latitude"] = lat
+        stats_dict["Longitude"] = lon
+        stats_dict["Elevation"] = elv
+        all_stats.append(stats_dict)
+    return(jsonify(all_stats))
+
+
+@app.route("/api/v1.0/tobs")
+def tobs():
+    session = Session(engine)
+
+    recent_date = dt.date(2017,8,23)
+    year_ago = dt.date(recent_date.year - 1,recent_date.month,recent_date.day)
+
+    tobs = [measurement.date,measurement.tobs]
+    results = session.query(*tobs).filter(measurement.date >= year_ago).\
+    filter(measurement.station == "USC00519281").all()
+    session.close()
+
+    all_tobs = []
+    for date, temp in results:
+        tobs_dict = {}
+        tobs_dict["Date"] = date
+        tobs_dict["Temp"] = temp
+        all_tobs.append(tobs_dict)
+
+    return(jsonify(all_tobs))
+
+
 
 @app.route("/api/v1.0/<start>/<end>")
 @app.route("/api/v1.0/<start>")
@@ -75,14 +116,22 @@ def temps(start = None, end = None):
     if not end:
       data = [func.min(measurement.tobs),func.avg(measurement.tobs), func.max(measurement.tobs)]
       results = session.query(*data).filter(measurement.date >= start).all()
-      temp_results = list(np.ravel(results))
+    
       session.close()
+
+      for list in results:
+          temp_results = {"Min" : list[0], "Avg" :list[1], "Max": list[2]}
+
       return(jsonify(temp_results))
     else:
        data = [func.min(measurement.tobs),func.avg(measurement.tobs), func.max(measurement.tobs)]
        results = session.query(*data).filter(measurement.date >= start).filter(measurement.date <= end).all()
-       temp_results = list(np.ravel(results))
+       
        session.close()
+
+       for list in results:
+          temp_results = {"Min" : list[0], "Avg" :list[1], "Max": list[2]}
+          
        return(jsonify(temp_results)) 
     
 
